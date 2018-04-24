@@ -1,0 +1,219 @@
+drive.web-frontend_20180412.00_p1
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>EchoPing</title>
+  </head>
+  <body>
+    <table>
+      <tr>
+        <td>
+          <button id="chirp">Chirp</button>
+          <button id="control">Start</button>
+        </td>
+        <td>
+          <button id="reset">Reset</button>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <input id="frequency" type="range" min="100" max="5000" value="4000" step="100" />&nbsp;<span id="frequencySpan">4000</span>Hz
+          <datalist id="frequencyTicks">
+            <option value="100" label="100Hz">
+            <option value="500">
+            <option value="1000">
+            <option value="1500">
+            <option value="2000">
+            <option value="2500" label="2.5kHz">
+            <option value="3000">
+            <option value="3500">
+            <option value="4000">
+            <option value="4500">
+            <option value="5000" label="5kHz">
+          </datalist>
+        </td>
+        <td>Base frequency.</td>
+        <!-- Range control, minimum 0 maximum 100. Maps linearly to [0, 5000] -->
+      </tr>
+      <tr>
+        <td><input id="subfrequencies" type="range" min="0" max="6" value="4" />&nbsp;<span id="subfrequenciesSpan">6</span></td>
+        <td>Number of lower frequencies.</td>
+      </tr>
+      <tr>
+        <td><input id="freqGain" type="range" min="0" max="2" value="1" step=".1" />&nbsp;<span id="freqGainSpan">1</span></td>
+        <td>Gain decay on lower frequencies (higher values will cause lower frequencies to be quieter).</td>
+        <!-- For each lower frequency n, gain is e^-(freqGain*n) -->
+      </tr>
+      <tr>
+        <td><input id="attack" type="range" min="1" max="10" value="5" />&nbsp;<span id="attackSpan">5</span></td>
+        <td>Attack (lower values will cause the chirp to start more quickly)</td>
+        <!-- Each chirp targets gain 1 with timeDuration attack*100 -->
+      </tr>
+      <tr>
+        <td><input id="decay" type="range" min="1" max="30" value="15" />&nbsp;<span id="decaySpan">15</span></td>
+        <td>Decay (high values will sustain the chirp for longer).</td>
+        <!-- Each chirp targets gain 0 from time 5*attack*100 with timeDuration decay*100 -->
+      </tr>
+      <tr>
+        <td><input id="tempo" type="number" value="2" />&nbsp;<span id="tempoSpan">2</span></td>
+        <td>Clicks per second</td>
+        <!-- Start chirps this often -->
+      </tr>
+    </table>
+
+    <script type="text/javascript">
+      let isPlaying = false;
+
+      const audioContext = new AudioContext();
+      const gainNode = audioContext.createGain();
+      gainNode.gain.setValueAtTime(0, 0);
+      gainNode.connect(audioContext.destination);
+
+      class OscillatorGroup {
+        constructor(audioContext) {
+          this.audioContext = audioContext;
+          this.oscillators = [];
+          for(let i = 0; i<=6; i++) {
+            const oscillator = this.audioContext.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, 0);
+
+            const gainNode = audioContext.createGain();
+            gainNode.gain.setValueAtTime(0, 0);
+            oscillator.connect(gainNode);
+
+            this.oscillators.push({oscillator, gainNode});
+          }
+        }
+
+        setChirp(frequency, subfrequencies, gainDecay) {
+          for(const {gainNode} of this.oscillators) {
+            gainNode.gain.setValueAtTime(0, 0);
+          }
+
+          this.oscillators[0].oscillator.frequency.setValueAtTime(frequency, 0);
+          this.oscillators[0].gainNode.gain.setValueAtTime(1, 0);
+
+          for(let i = 1; i <= subfrequencies; i++) {
+            const gain = Math.exp(-(gainDecay * (subfrequencies - (subfrequencies - i + 1))));
+            this.oscillators[i].gainNode.gain.setValueAtTime(gain, 0);
+            this.oscillators[i].oscillator.frequency.setValueAtTime(frequency, 0);
+            frequency /= 2;
+          }
+        }
+
+        connect(target) {
+          for (const {gainNode} of this.oscillators) {
+            gainNode.connect(target);
+          }
+        }
+
+        start() {
+          for (const {oscillator} of this.oscillators) {
+            oscillator.start();
+          }
+        }
+
+        stop() {
+          for (const {oscillator} of this.oscillators) {
+            oscillator.stop();
+          }
+        }
+      }
+
+      const oscillators = new OscillatorGroup(audioContext);
+      const master = audioContext.createGain();
+      master.gain.setValueAtTime(0, 0);
+      master.connect(audioContext.destination);
+      oscillators.connect(master);
+      oscillators.start();
+
+      const frequencyCtrl = document.getElementById('frequency');
+      const subfrequenciesCtrl = document.getElementById('subfrequencies');
+      const freqGainCtrl = document.getElementById('freqGain');
+      const attackCtrl = document.getElementById('attack');
+      const decayCtrl = document.getElementById('decay');
+      const tempoCtrl = document.getElementById('tempo');
+
+      const frequencySpan = document.getElementById('frequencySpan');
+      const subfrequenciesSpan = document.getElementById('subfrequenciesSpan');
+      const freqGainSpan = document.getElementById('freqGainSpan');
+      const attackSpan = document.getElementById('attackSpan');
+      const decaySpan = document.getElementById('decaySpan');
+      const tempoSpan = document.getElementById('tempoSpan');
+      
+      function updateSpans() {
+        const {frequency, subfrequencies, freqGain, attack, decay, tempo} = getValues();
+        frequencySpan.innerText = frequency;
+        subfrequenciesSpan.innerText = subfrequencies;
+        freqGainSpan.innerText = freqGain;
+        attackSpan.innerText = attack;
+        decaySpan.innerText = decay;
+        tempoSpan.innerText = tempo;
+      }
+      updateSpans();
+      frequencyCtrl.addEventListener('change', updateSpans);
+      subfrequenciesCtrl.addEventListener('change', updateSpans);
+      freqGainCtrl.addEventListener('change', updateSpans);
+      attackCtrl.addEventListener('change', updateSpans);
+      decayCtrl.addEventListener('change', updateSpans);
+      tempoCtrl.addEventListener('change', updateSpans);
+
+      function getValues() {
+        const frequency = +frequencyCtrl.value;
+        const subfrequencies = +subfrequenciesCtrl.value;
+        const freqGain = +freqGainCtrl.value;
+        const attack = +attackCtrl.value;
+        const decay = +decayCtrl.value;
+        let tempo = +tempoCtrl.value;
+        if (tempo < 1) {
+          tempo = 1-(1 / (+tempoCtrl.max + 1 + tempo));
+        }
+
+        return {frequency, subfrequencies, freqGain, attack, decay, tempo};
+      }
+
+      function chirp() {
+      	const {frequency, subfrequencies, freqGain, attack, decay} = getValues();
+      	oscillators.setChirp(frequency, subfrequencies, freqGain);
+        const now = audioContext.currentTime;
+        master.gain.setTargetAtTime(1, now,  attack * .001);
+        master.gain.setTargetAtTime(0, now + (attack * 5 * .001), decay * .001);
+      }
+
+      const chirpButton = document.getElementById('chirp');
+      chirpButton.addEventListener('click', chirp);
+
+      const control = document.getElementById('control');
+      control.addEventListener('click', function () {
+        if (isPlaying) {
+          isPlaying = false;
+          control.innerText = 'Start';
+        } else {
+          isPlaying = true;
+          control.innerText = 'Stop';
+        }
+      });
+      
+      function reset() {
+        frequencyCtrl.value = 4000;
+        subfrequenciesCtrl.value = 4;
+        freqGainCtrl.value = 1;
+        attackCtrl.value = 5;
+        decayCtrl.value = 15;
+        tempo.value = 1;
+      }
+      document.getElementById('reset').addEventListener('click', reset);
+
+      function play() {
+        const {tempo} = getValues();
+        updateSpans();
+        if (isPlaying && tempo !== 0) chirp();
+        
+        window.setTimeout(play, 1000 / tempo);
+      }
+      play();
+      
+    </script>
+  </body>
+</html>
