@@ -16,49 +16,39 @@
       </tr>
       <tr>
         <td>
-          <input id="frequency" type="range" min="100" max="5000" value="4000" step="100" />&nbsp;<span id="frequencySpan">4000</span>Hz
-          <datalist id="frequencyTicks">
-            <option value="100" label="100Hz">
-            <option value="500">
-            <option value="1000">
-            <option value="1500">
-            <option value="2000">
-            <option value="2500" label="2.5kHz">
-            <option value="3000">
-            <option value="3500">
-            <option value="4000">
-            <option value="4500">
-            <option value="5000" label="5kHz">
-          </datalist>
+          <input id="frequency" type="range" min="100" max="5000" value="4000" step="100" /><span id="frequencySpan">4000</span>Hz
         </td>
         <td>Base frequency.</td>
         <!-- Range control, minimum 0 maximum 100. Maps linearly to [0, 5000] -->
       </tr>
       <tr>
-        <td><input id="subfrequencies" type="range" min="0" max="6" value="4" />&nbsp;<span id="subfrequenciesSpan">6</span></td>
+        <td><input id="subfrequencies" type="range" min="0" max="6" value="4" /><span id="subfrequenciesSpan">6</span></td>
         <td>Number of lower frequencies.</td>
       </tr>
       <tr>
-        <td><input id="freqGain" type="range" min="0" max="2" value="1" step=".1" />&nbsp;<span id="freqGainSpan">1</span></td>
+        <td><input id="freqGain" type="range" min="0" max="2" value="1" step=".1" /><span id="freqGainSpan">1</span></td>
         <td>Gain decay on lower frequencies (higher values will cause lower frequencies to be quieter).</td>
         <!-- For each lower frequency n, gain is e^-(freqGain*n) -->
       </tr>
       <tr>
-        <td><input id="attack" type="range" min="1" max="10" value="5" />&nbsp;<span id="attackSpan">5</span></td>
+        <td><input id="attack" type="range" min="1" max="10" value="5" /><span id="attackSpan">5</span></td>
         <td>Attack (lower values will cause the chirp to start more quickly)</td>
         <!-- Each chirp targets gain 1 with timeDuration attack*100 -->
       </tr>
       <tr>
-        <td><input id="decay" type="range" min="1" max="30" value="15" />&nbsp;<span id="decaySpan">15</span></td>
+        <td><input id="decay" type="range" min="1" max="30" value="15" /><span id="decaySpan">15</span></td>
         <td>Decay (high values will sustain the chirp for longer).</td>
         <!-- Each chirp targets gain 0 from time 5*attack*100 with timeDuration decay*100 -->
       </tr>
       <tr>
-        <td><input id="tempo" type="number" value="2" />&nbsp;<span id="tempoSpan">2</span></td>
+        <td><input id="tempo" type="number" value="2" /><span id="tempoSpan">2</span></td>
         <td>Clicks per second</td>
         <!-- Start chirps this often -->
       </tr>
     </table>
+
+    <canvas id="waveform" width="380" height="165"></canvas>
+    <canvas id="freqgraph" width="380" height="165"></canvas>
 
     <script type="text/javascript">
       let isPlaying = false;
@@ -205,14 +195,95 @@
       document.getElementById('reset').addEventListener('click', reset);
 
       function play() {
-        const {tempo} = getValues();
+        const {tempo, attack, decay} = getValues();
         updateSpans();
         if (isPlaying && tempo !== 0) chirp();
         
         window.setTimeout(play, 1000 / tempo);
       }
       play();
-      
+
+      const waveform = document.getElementById('waveform');
+      const waveformCtx = waveform.getContext('2d');
+      const waveAnalyser = audioContext.createAnalyser();
+      master.connect(waveAnalyser);
+      waveAnalyser.fftSize = 2048;
+      const waveBufferLength = waveAnalyser.frequencyBinCount;
+      const waveDataArray = new Uint8Array(waveBufferLength);
+      function waveVisualization() {
+	      const HEIGHT = waveform.height;
+        const WIDTH = waveform.width;
+        
+        waveAnalyser.getByteTimeDomainData(waveDataArray);
+
+        waveformCtx.fillStyle = 'rgb(200, 200, 200)';
+        waveformCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        waveformCtx.lineWidth = 2;
+        waveformCtx.strokeStyle = 'rgb(0, 0, 0)';
+
+        waveformCtx.beginPath();
+
+        const sliceWidth = WIDTH * 1.0 / waveBufferLength;
+        let x = 0;
+
+        for(let i = 0; i < waveBufferLength; i++) {
+
+          const v = waveDataArray[i] / 128.0;
+          let y = v * HEIGHT/2;
+
+          if(i === 0) {
+            waveformCtx.moveTo(x, y);
+          } else {
+            waveformCtx.lineTo(x, y);
+          }
+          x += sliceWidth;
+        }        
+
+        waveformCtx.lineTo(WIDTH, HEIGHT/2);
+        waveformCtx.stroke();
+      }
+
+    
+      const freqgraph = document.getElementById('freqgraph');
+      const freqCtx = freqgraph.getContext('2d');
+      const freqAnalyser = audioContext.createAnalyser();
+      master.connect(freqAnalyser);
+      freqAnalyser.fftSize = 256;
+      const freqBufferLength = freqAnalyser.frequencyBinCount;
+      const freqDataArray = new Uint8Array(freqBufferLength);
+
+      function visualizeFreq() {
+	      const HEIGHT = freqgraph.height;
+        const WIDTH = freqgraph.width;
+
+        freqCtx.clearRect(0, 0, WIDTH, HEIGHT);
+
+        freqAnalyser.getByteFrequencyData(freqDataArray);
+
+        freqCtx.fillStyle = 'rgb(0, 0, 0)';
+        freqCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        var barWidth = (WIDTH / freqBufferLength) * 2.5;
+        var barHeight;
+        var x = 0;
+
+        for(var i = 0; i < freqBufferLength; i++) {
+          barHeight = freqDataArray[i];
+
+          freqCtx.fillStyle = 'rgb(' + (barHeight+100) + ',50,50)';
+          freqCtx.fillRect(x,HEIGHT-barHeight/2,barWidth,barHeight/2);
+
+          x += barWidth + 1;
+        }
+      }
+
+      function visualization() {
+        requestAnimationFrame(visualization);
+        waveVisualization();
+        visualizeFreq();
+      }
+      requestAnimationFrame(visualization);
     </script>
   </body>
 </html>
