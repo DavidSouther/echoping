@@ -41,6 +41,10 @@
         <!-- Each chirp targets gain 0 from time 5*attack*100 with timeDuration decay*100 -->
       </tr>
       <tr>
+        <td><input id="distortion" type="range" min="0" max="100" value="15" /><span id="distortionSpan">15</span></td>
+        <td>Distortion (high values will...???).</td>
+      </tr>
+      <tr>
         <td><input id="tempo" type="number" value="2" /><span id="tempoSpan">2</span></td>
         <td>Clicks per second</td>
         <!-- Start chirps this often -->
@@ -61,6 +65,7 @@
       class OscillatorGroup {
         constructor(audioContext) {
           this.audioContext = audioContext;
+          this.distortion = this.audioContext.createWaveShaper();
           this.oscillators = [];
           for(let i = 0; i<=6; i++) {
             const oscillator = this.audioContext.createOscillator();
@@ -72,10 +77,11 @@
             oscillator.connect(gainNode);
 
             this.oscillators.push({oscillator, gainNode});
+            gainNode.connect(this.distortion);
           }
         }
 
-        setChirp(frequency, subfrequencies, gainDecay) {
+        setChirp(frequency, subfrequencies, gainDecay, distortion = 0) {
           for(const {gainNode} of this.oscillators) {
             gainNode.gain.setValueAtTime(0, 0);
           }
@@ -89,12 +95,12 @@
             this.oscillators[i].oscillator.frequency.setValueAtTime(frequency, 0);
             frequency /= 2;
           }
+
+          this.distortion.curve = this.makeDistortionCurve(distortion);
         }
 
         connect(target) {
-          for (const {gainNode} of this.oscillators) {
-            gainNode.connect(target);
-          }
+          this.distortion.connect(target);
         }
 
         start() {
@@ -107,6 +113,18 @@
           for (const {oscillator} of this.oscillators) {
             oscillator.stop();
           }
+        }
+
+        // https://stackoverflow.com/a/22313408
+        makeDistortionCurve(k = 50) {
+          const samples = 44100;
+          const curve = new Float32Array(samples);
+          const deg = Math.PI / 180;
+          for (let i =0 ; i < samples; ++i ) {
+            const x = i * 2 / samples - 1;
+            curve[i] = ( 3 + k ) * x * 20 * deg / ( Math.PI + k * Math.abs(x) );
+          }
+          return curve;
         }
       }
 
@@ -122,6 +140,7 @@
       const freqGainCtrl = document.getElementById('freqGain');
       const attackCtrl = document.getElementById('attack');
       const decayCtrl = document.getElementById('decay');
+      const distortionCtrl = document.getElementById('distortion');
       const tempoCtrl = document.getElementById('tempo');
 
       const frequencySpan = document.getElementById('frequencySpan');
@@ -129,15 +148,17 @@
       const freqGainSpan = document.getElementById('freqGainSpan');
       const attackSpan = document.getElementById('attackSpan');
       const decaySpan = document.getElementById('decaySpan');
+      const distortionSpan = document.getElementById('distortionSpan');
       const tempoSpan = document.getElementById('tempoSpan');
       
       function updateSpans() {
-        const {frequency, subfrequencies, freqGain, attack, decay, tempo} = getValues();
+        const {frequency, subfrequencies, freqGain, attack, decay, distortion, tempo} = getValues();
         frequencySpan.innerText = frequency;
         subfrequenciesSpan.innerText = subfrequencies;
         freqGainSpan.innerText = freqGain;
         attackSpan.innerText = attack;
         decaySpan.innerText = decay;
+        distortionSpan.innerText = distortion;
         tempoSpan.innerText = tempo;
       }
       updateSpans();
@@ -146,6 +167,7 @@
       freqGainCtrl.addEventListener('change', updateSpans);
       attackCtrl.addEventListener('change', updateSpans);
       decayCtrl.addEventListener('change', updateSpans);
+      distortionCtrl.addEventListener('change', updateSpans);
       tempoCtrl.addEventListener('change', updateSpans);
 
       function getValues() {
@@ -154,12 +176,13 @@
         const freqGain = +freqGainCtrl.value;
         const attack = +attackCtrl.value;
         const decay = +decayCtrl.value;
+        const distortion = +distortionCtrl.value;
         let tempo = +tempoCtrl.value;
         if (tempo < 1) {
           tempo = 1-(1 / (+tempoCtrl.max + 1 + tempo));
         }
 
-        return {frequency, subfrequencies, freqGain, attack, decay, tempo};
+        return {frequency, subfrequencies, freqGain, attack, decay, tempo, distortion};
       }
 
       function chirp() {
@@ -203,6 +226,7 @@
       }
       play();
 
+      // https://github.com/mdn/voice-change-o-matic/blob/gh-pages/scripts/app.js
       const waveform = document.getElementById('waveform');
       const waveformCtx = waveform.getContext('2d');
       const waveAnalyser = audioContext.createAnalyser();
@@ -219,7 +243,7 @@
         waveformCtx.fillStyle = 'rgb(200, 200, 200)';
         waveformCtx.fillRect(0, 0, WIDTH, HEIGHT);
 
-        waveformCtx.lineWidth = 2;
+        waveformCtx.lineWidth = .5;
         waveformCtx.strokeStyle = 'rgb(0, 0, 0)';
 
         waveformCtx.beginPath();
