@@ -50,9 +50,11 @@
         <!-- Start chirps this often -->
       </tr>
     </table>
-
-    <canvas id="waveform" width="380" height="165"></canvas>
-    <canvas id="freqgraph" width="380" height="165"></canvas>
+    
+    <div style="display:flex; flex-direction: column; flex-basis: fill;">
+      <canvas id="waveform" style="flex: 1" height="165"></canvas>
+      <canvas id="freqgraph" style="flex: 1" height="165"></canvas>
+    </div>
 
     <script type="text/javascript">
       let isPlaying = false;
@@ -174,7 +176,7 @@
         const frequency = +frequencyCtrl.value;
         const subfrequencies = +subfrequenciesCtrl.value;
         const freqGain = +freqGainCtrl.value;
-        const attack = +attackCtrl.value;
+        const attack = 1/+attackCtrl.value;
         const decay = +decayCtrl.value;
         const distortion = +distortionCtrl.value;
         let tempo = +tempoCtrl.value;
@@ -191,6 +193,9 @@
         const now = audioContext.currentTime;
         master.gain.setTargetAtTime(1, now,  attack * .001);
         master.gain.setTargetAtTime(0, now + (attack * 5 * .001), decay * .001);
+
+        // Chip can last at most 200ms (attack max + decay max * 5)
+        window.setTimeout(waveVisualization, 180);
       }
 
       const chirpButton = document.getElementById('chirp');
@@ -217,43 +222,60 @@
       }
       document.getElementById('reset').addEventListener('click', reset);
 
-      function play() {
-        const {tempo, attack, decay} = getValues();
-        updateSpans();
-        if (isPlaying && tempo !== 0) chirp();
-        
-        window.setTimeout(play, 1000 / tempo);
-      }
-      play();
+      const diff = (a) => a.map((n, i) => i > 0 ? Math.abs(n - a[i-1]) : 0);
+      const sparsen = (a, p) => a.filter((_, i) => i % p == 0);
 
       // https://github.com/mdn/voice-change-o-matic/blob/gh-pages/scripts/app.js
       const waveform = document.getElementById('waveform');
       const waveformCtx = waveform.getContext('2d');
+      waveformCtx.imageSmoothingEnabled = false;
+      waveformCtx.translate(.5, .5);
       const waveAnalyser = audioContext.createAnalyser();
       master.connect(waveAnalyser);
-      waveAnalyser.fftSize = 2048;
-      const waveBufferLength = waveAnalyser.frequencyBinCount;
+      waveAnalyser.fftSize = 8192;
+      const waveBufferLength = waveAnalyser.fftSize;
       const waveDataArray = new Uint8Array(waveBufferLength);
+
+      const density = 4;
       function waveVisualization() {
-	      const HEIGHT = waveform.height;
-        const WIDTH = waveform.width;
-        
         waveAnalyser.getByteTimeDomainData(waveDataArray);
+
+        // Find bounds of the chirp
+        // Pull out most of the chirp, look for a run of 0s, start from there.
+        const waveSparse = sparsen(waveDataArray, density);
+        const waveDiff = diff(waveSparse);
+        let i = 0;
+        while (i < waveDiff.length && waveDiff[i] < 1) i++;
+        const skipTo = i/2;
+        i = waveDiff.length-1;
+        while (i > -1 && waveDiff[i] < 3) i--;
+        const stopAt = i + (waveDiff.length - i)/4;
+
+        const waveOfInterest = waveDataArray.slice(skipTo * density, (stopAt+1) * density);
+        const sparseWaveOfInterest = waveSparse.slice(skipTo, stopAt+1);
+        drawWave(waveOfInterest);
+      }
+
+      function drawWave(wave) {
+        const HEIGHT = waveform.height;
+        const WIDTH = waveform.width;
 
         waveformCtx.fillStyle = 'rgb(200, 200, 200)';
         waveformCtx.fillRect(0, 0, WIDTH, HEIGHT);
 
-        waveformCtx.lineWidth = .5;
+        waveformCtx.lineWidth = 1;
         waveformCtx.strokeStyle = 'rgb(0, 0, 0)';
 
         waveformCtx.beginPath();
 
-        const sliceWidth = WIDTH * 1.0 / waveBufferLength;
+        const sparseWave = sparsen(wave, (wave.length / WIDTH)|0);
+
+        const sliceWidth = WIDTH * 1.0 / sparseWave.length;
         let x = 0;
 
-        for(let i = 0; i < waveBufferLength; i++) {
+        for(let i = 0; i < sparseWave.length; i++) {
 
-          const v = waveDataArray[i] / 128.0;
+          const v = sparseWave[i] / 128.0;
           let y = v * HEIGHT/2;
 
           if(i === 0) {
@@ -304,10 +326,20 @@
 
       function visualization() {
         requestAnimationFrame(visualization);
-        waveVisualization();
+        //waveVisualization();
         visualizeFreq();
       }
       requestAnimationFrame(visualization);
+
+      function play() {
+        const {tempo, attack, decay} = getValues();
+        updateSpans();
+        if (isPlaying && tempo !== 0) chirp();
+        //visualizeFreq();
+        
+        window.setTimeout(play, 1000 / tempo);
+      }
+      play();
     </script>
   </body>
 </html>
