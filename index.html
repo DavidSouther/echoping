@@ -59,7 +59,7 @@
     <script type="text/javascript">
       let isPlaying = false;
 
-      const audioContext = new AudioContext();
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const gainNode = audioContext.createGain();
       gainNode.gain.setValueAtTime(0, 0);
       gainNode.connect(audioContext.destination);
