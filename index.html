@@ -257,9 +257,9 @@
       }
 
       function drawWave(wave) {
+        const WIDTH = waveform.width = window.innerWidth - 16;
         const HEIGHT = waveform.height;
-        const WIDTH = waveform.width;
-
+        
         waveformCtx.fillStyle = 'rgb(200, 200, 200)';
         waveformCtx.fillRect(0, 0, WIDTH, HEIGHT);
 
@@ -300,8 +300,8 @@
       const freqDataArray = new Uint8Array(freqBufferLength);
 
       function visualizeFreq() {
+        const WIDTH = freqgraph.width = window.innerWidth - 16;
 	      const HEIGHT = freqgraph.height;
-        const WIDTH = freqgraph.width;
 
         freqCtx.clearRect(0, 0, WIDTH, HEIGHT);
 
