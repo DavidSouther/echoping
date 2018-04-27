@@ -18,7 +18,8 @@
         <dl>
           <dt>Base Frequency</dt><dd>Base frequency of the pulse</dd>
           <dt>Undertones</dt><dd>Number of lower frequencies.</dd>
-          <dt>Frequency decay</dt><dd>Gain decay on lower frequencies (higher values will cause lower frequencies to be quieter).</dd>
+          <dt>Overtones</dt><dd>Number of upper frequencies.</dd>
+          <dt>Frequency decay</dt><dd>Gain decay on added frequencies (higher values will cause additinal frequencies to be quieter).</dd>
           <dt>Attack</dt><dd>Attack (lower values will cause the chirp to start more quickly)</dd>
           <dt>Decay</dt><dd>Decay (high values will sustain the chirp for longer).</dd>
           <dt>Tempo</dt><dd>Clicks per second.</dd>
@@ -44,8 +45,13 @@
       </div>
       <div>
         <label>Undertones</label>
-        <span id="subfrequenciesSpan">6</span>
-        <input id="subfrequencies" type="range" min="0" max="6" value="4" class="mdl-slider mdl-js-slider" />
+        <span id="undertonesSpan">4</span>
+        <input id="undertones" type="range" min="0" max="6" value="4" class="mdl-slider mdl-js-slider" />
+      </div>
+      <div>
+        <label>Overtones</label>
+        <span id="overtonesSpan">4</span>
+        <input id="overtones" type="range" min="0" max="6" value="4" class="mdl-slider mdl-js-slider" />
       </div>
       <div>
         <span>Frequency decay</span>
@@ -96,7 +102,7 @@
           this.audioContext = audioContext;
           this.distortion = this.audioContext.createWaveShaper();
           this.oscillators = [];
-          for(let i = 0; i<=6; i++) {
+          for(let i = 0; i<=1+6+6; i++) {
             const oscillator = this.audioContext.createOscillator();
             oscillator.type = 'sine';
             oscillator.frequency.setValueAtTime(440, 0);
@@ -110,7 +116,7 @@
           }
         }
 
-        setChirp(frequency, subfrequencies, gainDecay, distortion = 0) {
+        setChirp(frequency, undertones, overtones, gainDecay, distortion = 0) {
           for (const {gainNode} of this.oscillators) {
             gainNode.gain.setValueAtTime(0, 0);
           }
@@ -118,11 +124,19 @@
           this.oscillators[0].oscillator.frequency.setValueAtTime(frequency, 0);
           this.oscillators[0].gainNode.gain.setValueAtTime(1, 0);
 
-          for(let i = 1; i <= subfrequencies; i++) {
-            const gain = Math.exp(-(gainDecay * (subfrequencies - (subfrequencies - i + 1))));
+          let undertondeFreq = frequency;
+          for(let i = 1; i <= undertones + 1; i++) {
+            const gain = Math.exp(-(gainDecay * (undertones - (undertones - i + 1))));
             this.oscillators[i].gainNode.gain.setValueAtTime(gain, 0);
-            this.oscillators[i].oscillator.frequency.setValueAtTime(frequency, 0);
-            frequency /= 2;
+            this.oscillators[i].oscillator.frequency.setValueAtTime(undertondeFreq, 0);
+            undertondeFreq /= 2;
+          }
+          let overtoneFreq = frequency;
+          for(let i = 6; i <= overtones + 7; i++){
+            const gain = Math.exp(-(gainDecay * (overtones - (overtones - i + 1))));
+            this.oscillators[i].gainNode.gain.setValueAtTime(gain, 0);
+            this.oscillators[i].oscillator.frequency.setValueAtTime(overtoneFreq, 0);
+            overtoneFreq *= 2;
           }
 
           this.distortion.curve = this.makeDistortionCurve(distortion);
@@ -165,7 +179,8 @@
       oscillators.start();
 
       const frequencyCtrl = document.getElementById('frequency');
-      const subfrequenciesCtrl = document.getElementById('subfrequencies');
+      const undertonesCtrl = document.getElementById('undertones');
+      const overtonesCtrl = document.getElementById('overtones');
       const freqGainCtrl = document.getElementById('freqGain');
       const attackCtrl = document.getElementById('attack');
       const decayCtrl = document.getElementById('decay');
@@ -173,7 +188,8 @@
       const tempoCtrl = document.getElementById('tempo');
 
       const frequencySpan = document.getElementById('frequencySpan');
-      const subfrequenciesSpan = document.getElementById('subfrequenciesSpan');
+      const undertonesSpan = document.getElementById('undertonesSpan');
+      const overtonesSpan = document.getElementById('overtonesSpan');
       const freqGainSpan = document.getElementById('freqGainSpan');
       const attackSpan = document.getElementById('attackSpan');
       const decaySpan = document.getElementById('decaySpan');
@@ -181,9 +197,10 @@
       const tempoSpan = document.getElementById('tempoSpan');
       
       function updateSpans() {
-        const {frequency, subfrequencies, freqGain, attack, decay, distortion, tempo} = getValues();
+        const {frequency, undertones, overtones, freqGain, attack, decay, distortion, tempo} = getValues();
         frequencySpan.innerText = frequency;
-        subfrequenciesSpan.innerText = subfrequencies;
+        undertonesSpan.innerText = undertones;
+        overtonesSpan.innerText = overtones;
         freqGainSpan.innerText = freqGain;
         attackSpan.innerText = attack;
         decaySpan.innerText = decay;
@@ -192,7 +209,8 @@
       }
       updateSpans();
       frequencyCtrl.addEventListener('change', updateSpans);
-      subfrequenciesCtrl.addEventListener('change', updateSpans);
+      undertonesCtrl.addEventListener('change', updateSpans);
+      overtonesCtrl.addEventListener('change', updateSpans);
       freqGainCtrl.addEventListener('change', updateSpans);
       attackCtrl.addEventListener('change', updateSpans);
       decayCtrl.addEventListener('change', updateSpans);
@@ -201,7 +219,8 @@
 
       function getValues() {
         const frequency = +frequencyCtrl.value;
-        const subfrequencies = +subfrequenciesCtrl.value;
+        const undertones = +undertonesCtrl.value;
+        const overtones = +overtonesCtrl.value;
         const freqGain = +freqGainCtrl.value;
         const attack = 1/+attackCtrl.value;
         const decay = +decayCtrl.value;
@@ -211,12 +230,12 @@
           tempo = 1-(1 / (+tempoCtrl.max + 1 + tempo));
         }
 
-        return {frequency, subfrequencies, freqGain, attack, decay, tempo, distortion};
+        return {frequency, undertones, overtones, freqGain, attack, decay, tempo, distortion};
       }
 
       function chirp() {
-      	const {frequency, subfrequencies, freqGain, attack, decay} = getValues();
-      	oscillators.setChirp(frequency, subfrequencies, freqGain);
+      	const {frequency, undertones, overtones, freqGain, attack, decay} = getValues();
+      	oscillators.setChirp(frequency, undertones, overtones, freqGain);
         const now = audioContext.currentTime;
         master.gain.setTargetAtTime(1, now,  attack * .001);
         master.gain.setTargetAtTime(0, now + (attack * 5 * .001), decay * .001);
@@ -240,8 +259,9 @@
       });
       
       function reset() {
-        frequencyCtrl.value = 3400;
-        subfrequenciesCtrl.value = 4;
+        frequencyCtrl.value = 440;
+        undertonesCtrl.value = 2;
+        overtonesCtrl.value = 5;
         freqGainCtrl.value = .6;
         attackCtrl.value = 3;
         decayCtrl.value = 20;
