@@ -273,7 +273,7 @@
       resetButton.addEventListener('click', reset);
 
       function resume() {
-        audioCtx.resume();
+        audioContext.resume();
         chirpButton.removeEventListener('click', resume);
         control.removeEventListener('click', resume);
         resetButton.removeEventListener('click', resume);
